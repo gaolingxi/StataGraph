@@ -10,7 +10,7 @@ DATABASE_SCHEMA_VERSION = 1
 
 
 def _norm(value: Any) -> str:
-    return re.sub(r"[\\W_]+", "", str(value or "").casefold(), flags=re.UNICODE)
+    return re.sub(r"[\W_]+", "", str(value or "").casefold(), flags=re.UNICODE)
 
 
 def _norm_path(value: Any) -> str:
@@ -83,11 +83,11 @@ def _local_path_relative(canonical: str, relative_path: str, verified: bool) -> 
 def _year_hint(relative_path: str, dataset_id: str) -> int | None:
     parts = _norm_path(relative_path).split("/")
     for part in reversed(parts[:-1]):
-        if re.fullmatch(r"(?:19|20)\\d{2}", part):
+        if re.fullmatch(r"(?:19|20)\d{2}", part):
             return int(part)
     stem = Path(parts[-1]).stem if parts else ""
     prefix = re.escape(dataset_id)
-    match = re.search(rf"{prefix}[_-]?(19\\d{{2}}|20\\d{{2}})", stem, flags=re.IGNORECASE)
+    match = re.search(rf"{prefix}[_-]?(19\d{{2}}|20\d{{2}})", stem, flags=re.IGNORECASE)
     if match:
         return int(match.group(1))
     return None
