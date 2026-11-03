@@ -150,6 +150,40 @@ class DatabaseIndexerTests(unittest.TestCase):
         self.assertIsNone(index["variables"][0]["local_path_relative"])
 
 
+    def test_shared_root_metadata_is_scoped_by_catalog_category(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            shared = '["metadata/_root_files/files.csv"]'
+            self._write_csv(root / "catalog" / "datasets.csv", [
+                {
+                    "dataset_id": "dataset_a",
+                    "name": "Dataset A",
+                    "categories_json": '["a.csv"]',
+                    "metadata_files_json": shared,
+                },
+                {
+                    "dataset_id": "dataset_b",
+                    "name": "Dataset B",
+                    "categories_json": '["b.csv"]',
+                    "metadata_files_json": shared,
+                },
+            ])
+            self._write_csv(root / "metadata" / "_root_files" / "files.csv", [
+                {"relative_path": "a.csv", "extension": ".csv", "size_mb": "1", "n_obs": "", "n_vars": "1", "extra": ""},
+                {"relative_path": "b.csv", "extension": ".csv", "size_mb": "2", "n_obs": "", "n_vars": "1", "extra": ""},
+            ])
+            self._write_csv(root / "metadata" / "_root_files" / "variables.csv", [
+                {"relative_path": "a.csv", "variable": "alpha", "label": "Alpha field", "type": "", "original_type": ""},
+                {"relative_path": "b.csv", "variable": "beta", "label": "Beta field", "type": "", "original_type": ""},
+            ])
+            index = build_database_index(root)
+
+        self.assertEqual(index["datasets"]["dataset_a"]["files_count"], 1)
+        self.assertEqual(index["datasets"]["dataset_a"]["variable_count"], 1)
+        self.assertEqual(index["datasets"]["dataset_b"]["files_count"], 1)
+        self.assertEqual(index["datasets"]["dataset_b"]["variable_count"], 1)
+        self.assertEqual({row["variable"] for row in index["variables"]}, {"alpha", "beta"})
+
 
 if __name__ == "__main__":
     unittest.main()
