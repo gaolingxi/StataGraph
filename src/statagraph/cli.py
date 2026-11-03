@@ -5,6 +5,15 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .database_indexer import (
+    build_database_index,
+    database_profile,
+    load_database_index,
+    save_database_index,
+    search_database_files,
+    search_database_variables,
+    search_databases,
+)
 from .indexer import (
     build_index,
     dataset_lineage,
@@ -118,6 +127,55 @@ def cmd_search_history(args: argparse.Namespace) -> int:
     return 0 if rows else 1
 
 
+
+def cmd_index_databases(args: argparse.Namespace) -> int:
+    index = build_database_index(args.control_root)
+    target = save_database_index(index, args.control_root, output=args.output)
+    _print_json({"status": "ok", "index": target.as_posix(), "summary": index["summary"]})
+    return 0
+
+
+def cmd_search_databases(args: argparse.Namespace) -> int:
+    index = load_database_index(args.control_root, rebuild=args.rebuild)
+    rows = search_databases(index, query=args.query or "", limit=args.limit)
+    _print_json({"query": args.query, "count": len(rows), "datasets": rows})
+    return 0 if rows else 1
+
+
+def cmd_search_database_files(args: argparse.Namespace) -> int:
+    index = load_database_index(args.control_root, rebuild=args.rebuild)
+    rows = search_database_files(
+        index, query=args.query or "", dataset_id=args.dataset_id, limit=args.limit
+    )
+    _print_json({"query": args.query, "dataset_id": args.dataset_id, "count": len(rows), "files": rows})
+    return 0 if rows else 1
+
+
+def cmd_search_database_variables(args: argparse.Namespace) -> int:
+    index = load_database_index(args.control_root, rebuild=args.rebuild)
+    rows = search_database_variables(
+        index,
+        query=args.query,
+        dataset_id=args.dataset_id,
+        file_query=args.file,
+        limit=args.limit,
+    )
+    _print_json({
+        "query": args.query,
+        "dataset_id": args.dataset_id,
+        "file": args.file,
+        "count": len(rows),
+        "variables": rows,
+    })
+    return 0 if rows else 1
+
+
+def cmd_database_profile(args: argparse.Namespace) -> int:
+    index = load_database_index(args.control_root, rebuild=args.rebuild)
+    result = database_profile(index, args.dataset_id)
+    _print_json(result)
+    return 0 if result.get("found") else 1
+
 def _add_common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("project", help="Path to the Stata project")
     parser.add_argument("--rebuild", action="store_true", help="Rebuild the index before querying")
@@ -189,6 +247,42 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--status", help="Filter by status/decision such as KEEP, CLOSED_NULL, DONE")
     p.add_argument("--limit", type=int, default=30)
     p.set_defaults(func=cmd_search_history)
+
+
+    p = sub.add_parser("index-databases", help="Build a metadata-only microdata database graph")
+    p.add_argument("control_root", help="Path to the local gaolingxi/data control clone")
+    p.add_argument("--output", help="Optional output path; default is <control_root>/.statagraph/database_index.json")
+    p.set_defaults(func=cmd_index_databases)
+
+    p = sub.add_parser("search-databases", help="Search the central database catalog")
+    p.add_argument("control_root", help="Path to the local gaolingxi/data control clone")
+    p.add_argument("query", nargs="?", help="Dataset name, ID, or category")
+    p.add_argument("--limit", type=int, default=20)
+    p.add_argument("--rebuild", action="store_true")
+    p.set_defaults(func=cmd_search_databases)
+
+    p = sub.add_parser("search-database-files", help="Search files within registered datasets")
+    p.add_argument("control_root", help="Path to the local gaolingxi/data control clone")
+    p.add_argument("query", nargs="?", help="File name, path, or extension")
+    p.add_argument("--dataset-id")
+    p.add_argument("--limit", type=int, default=30)
+    p.add_argument("--rebuild", action="store_true")
+    p.set_defaults(func=cmd_search_database_files)
+
+    p = sub.add_parser("search-database-variables", help="Search variable names and labels across microdata")
+    p.add_argument("control_root", help="Path to the local gaolingxi/data control clone")
+    p.add_argument("query", help="Variable name or label, in Chinese or English")
+    p.add_argument("--dataset-id", help="Restrict to one dataset, e.g. cfps or chfs")
+    p.add_argument("--file", help="Restrict to a file path/name substring")
+    p.add_argument("--limit", type=int, default=50)
+    p.add_argument("--rebuild", action="store_true")
+    p.set_defaults(func=cmd_search_database_variables)
+
+    p = sub.add_parser("database-profile", help="Show one database's files, waves, and variable metadata")
+    p.add_argument("control_root", help="Path to the local gaolingxi/data control clone")
+    p.add_argument("dataset_id", help="Stable dataset ID, e.g. cfps, chfs, csmar")
+    p.add_argument("--rebuild", action="store_true")
+    p.set_defaults(func=cmd_database_profile)
 
     return parser
 
