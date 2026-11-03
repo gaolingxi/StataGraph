@@ -14,6 +14,7 @@ from .indexer import (
     get_log_errors,
     load_or_build,
     save_index,
+    search_history,
     search_logs,
 )
 
@@ -96,6 +97,27 @@ def cmd_log_errors(args: argparse.Namespace) -> int:
     return 0 if rows else 1
 
 
+def cmd_search_history(args: argparse.Namespace) -> int:
+    index = load_or_build(args.project, rebuild=args.rebuild)
+    rows = search_history(
+        index,
+        query=args.query,
+        branch=args.branch,
+        task=args.task,
+        status=args.status,
+        limit=args.limit,
+    )
+    _print_json({
+        "query": args.query,
+        "branch": args.branch,
+        "task": args.task,
+        "status": args.status,
+        "count": len(rows),
+        "records": rows,
+    })
+    return 0 if rows else 1
+
+
 def _add_common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("project", help="Path to the Stata project")
     parser.add_argument("--rebuild", action="store_true", help="Rebuild the index before querying")
@@ -155,6 +177,18 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("log-errors", help="List Stata runtime r(#) errors found in logs")
     _add_common(p)
     p.set_defaults(func=cmd_log_errors)
+
+    p = sub.add_parser(
+        "search-history",
+        help="Search unified experiment history across Stata logs, research_logs/*.md, and BRANCH_REGISTRY.md",
+    )
+    _add_common(p)
+    p.add_argument("query", nargs="?", help="Free-text query across structured history and source text")
+    p.add_argument("--branch", help="Filter by BRANCH_ID")
+    p.add_argument("--task", help="Filter by TASK_ID")
+    p.add_argument("--status", help="Filter by status/decision such as KEEP, CLOSED_NULL, DONE")
+    p.add_argument("--limit", type=int, default=30)
+    p.set_defaults(func=cmd_search_history)
 
     return parser
 
