@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "statagraph"
-version = "0.2.1"
-description = "Research-aware code, data, log, and experiment-history lineage for Stata projects"
+version = "0.2.2"
+description = "Research-aware Stata code, experiment history, and microdata database metadata graph"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "gaolingxi" }]
