@@ -8,10 +8,13 @@ from typing import Any
 from .indexer import (
     build_index,
     dataset_lineage,
+    find_log_results,
     find_regressions,
     find_variable,
+    get_log_errors,
     load_or_build,
     save_index,
+    search_logs,
 )
 
 
@@ -72,6 +75,27 @@ def cmd_calls(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_search_logs(args: argparse.Namespace) -> int:
+    index = load_or_build(args.project, rebuild=args.rebuild)
+    rows = search_logs(index, args.query, limit=args.limit)
+    _print_json({"query": args.query, "count": len(rows), "matches": rows})
+    return 0 if rows else 1
+
+
+def cmd_log_results(args: argparse.Namespace) -> int:
+    index = load_or_build(args.project, rebuild=args.rebuild)
+    rows = find_log_results(index, x=args.x, y=args.y, task=args.task, p_lt=args.p_lt)
+    _print_json({"count": len(rows), "results": rows})
+    return 0 if rows else 1
+
+
+def cmd_log_errors(args: argparse.Namespace) -> int:
+    index = load_or_build(args.project, rebuild=args.rebuild)
+    rows = get_log_errors(index)
+    _print_json({"count": len(rows), "errors": rows})
+    return 0 if rows else 1
+
+
 def _add_common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("project", help="Path to the Stata project")
     parser.add_argument("--rebuild", action="store_true", help="Rebuild the index before querying")
@@ -113,6 +137,24 @@ def build_parser() -> argparse.ArgumentParser:
     _add_common(p)
     p.add_argument("--target")
     p.set_defaults(func=cmd_calls)
+
+    p = sub.add_parser("search-logs", help="Search raw Stata logs plus structured log metadata/results")
+    _add_common(p)
+    p.add_argument("query")
+    p.add_argument("--limit", type=int, default=20)
+    p.set_defaults(func=cmd_search_logs)
+
+    p = sub.add_parser("log-results", help="Find structured regression results recovered from Stata logs")
+    _add_common(p)
+    p.add_argument("--x", help="Coefficient/variable name")
+    p.add_argument("--y", help="Outcome variable")
+    p.add_argument("--task", help="TASK_ID or substring")
+    p.add_argument("--p-lt", type=float, help="Keep matched coefficients with p below this threshold")
+    p.set_defaults(func=cmd_log_results)
+
+    p = sub.add_parser("log-errors", help="List Stata runtime r(#) errors found in logs")
+    _add_common(p)
+    p.set_defaults(func=cmd_log_errors)
 
     return parser
 
