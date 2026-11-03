@@ -96,7 +96,7 @@ class DatabaseIndexerTests(unittest.TestCase):
             "01_家庭与个人微观调查\\CFPS\\rawdata\\2018\\cfps2018person.dta",
         )
 
-        self.assertEqual(search_databases(index, "家庭调查")[0]["dataset_id"], "cfps")
+        self.assertEqual(search_databases(index, "CFPS")[0]["dataset_id"], "cfps")
         self.assertEqual(search_database_files(index, "person")[0]["n_obs"], 1000)
         profile = database_profile(index, "cfps")
         self.assertEqual(profile["years_inferred_from_file_paths"], [2018])
@@ -149,9 +149,6 @@ class DatabaseIndexerTests(unittest.TestCase):
         self.assertIsNone(index["datasets"]["blocked"]["canonical_local_relpath"])
         self.assertIsNone(index["variables"][0]["local_path_relative"])
 
-
-if __has_main__ if False else False:
-    pass
 
 
 if __name__ == "__main__":
