@@ -50,6 +50,43 @@ statagraph dataset-lineage path/to/project analysis_data_v2.dta
 statagraph table-sources path/to/project
 ```
 
+## Microdata database graph — V0.2.2
+
+StataGraph can also index the central `gaolingxi/data` control repository. This creates a database graph alongside each research project's code/history graph:
+
+```text
+dataset -> release / registry -> files -> variables -> labels / storage types
+```
+
+It reads only these control-plane metadata files:
+
+- `catalog/datasets.csv`
+- `catalog/data_registry.csv`
+- `metadata/<dataset>/files.csv`
+- `metadata/<dataset>/variables.csv`
+
+It does **not** open raw microdata, read observation-level values, or recursively scan the data mirror. The local path is exposed only when the registry status is `VERIFIED`; blocked, unresolved, and unregistered datasets remain discoverable as catalog entries but are not presented as approved local inputs.
+
+Build the local database index from the clean `data-control` clone:
+
+```bash
+statagraph index-databases "C:/Users/admin/Documents/data-control"
+```
+
+Search datasets, files, and variables:
+
+```bash
+statagraph search-databases "C:/Users/admin/Documents/data-control" CFPS
+statagraph search-database-files "C:/Users/admin/Documents/data-control" "person" --dataset-id cfps
+statagraph search-database-variables "C:/Users/admin/Documents/data-control" "家庭收入" --dataset-id cfps
+statagraph search-database-variables "C:/Users/admin/Documents/data-control" "income" --dataset-id chfs
+statagraph database-profile "C:/Users/admin/Documents/data-control" chfs
+```
+
+Variable results retain the source metadata file and row, variable name, label, storage type, original display format, source file, and any year hint inferred from the path. A path-derived year is a discovery hint, not proof of a survey-wave definition. Similar variable names or labels do not establish measurement comparability.
+
+The generated `.statagraph/database_index.json` is a local cache under the control clone and is excluded from Git. The central registry remains the sole authority for current local paths.
+
 ## Stata log queries
 
 StataGraph scans `.log` and `.smcl` files and extracts:
@@ -174,6 +211,13 @@ So branch code can be discarded when appropriate, while the experiment itself re
 - automatic branch/task cross-source linking
 - `search-history`
 
+### V0.2.2 — database metadata graph
+- central dataset catalog and registry indexing
+- file-level and variable-level metadata search
+- Chinese/English variable-label lookup
+- registry-gated local path references
+- metadata-only indexing; raw microdata are never opened
+
 ### Next
 - stronger macro expansion and nested macros
 - better IV/factor-variable parsing
@@ -191,4 +235,4 @@ So branch code can be discarded when appropriate, while the experiment itself re
 
 ## Status
 
-V0.2.1 is driven by real empirical-economics repositories. The target is fast recovery of research history: what was tried, with which specification, what happened, why it was kept or closed, and where the supporting evidence lives.
+V0.2.2 adds a metadata-only database graph to the research-code and experiment-history graph. It is driven by real empirical-economics repositories. The target is fast recovery of research history: what was tried, with which specification, what happened, why it was kept or closed, and where the supporting evidence lives.
