@@ -27,14 +27,15 @@ automation_ready: false
 
 1. 确认 StataGraph 当前代码版本为 0.2.2。
 2. 确认 C:\Users\admin\Documents\data-control 存在，且包含上述 catalog / metadata 文件。
-3. 记录 data-control 的 git status --short 和 HEAD；不执行 pull、reset、checkout 或任何 Git 写操作。
-4. 在 StataGraph 仓库执行：
+3. 记录 data-control 的 git status --short 和 HEAD；若存在任何未提交改动，立即停止并报告 BLOCKED，不得覆盖。
+4. 仅在 data-control 控制仓库执行 git pull --ff-only，同步最新 catalog、metadata 和 .gitignore；记录同步前后 HEAD。禁止在数据本体目录执行任何 Git 操作。
+5. 在 StataGraph 仓库执行：
 
    python -m pip install -e .
    statagraph index-databases "C:\Users\admin\Documents\data-control"
 
-5. 检查生成的 C:\Users\admin\Documents\data-control\.statagraph\database_index.json。
-6. 执行以下检索：
+6. 检查生成的 C:\Users\admin\Documents\data-control\.statagraph\database_index.json。
+7. 执行以下检索：
 
    statagraph search-databases "C:\Users\admin\Documents\data-control" CFPS
    statagraph search-database-variables "C:\Users\admin\Documents\data-control" "个人id" --dataset-id cfps --limit 5
@@ -44,8 +45,8 @@ automation_ready: false
    statagraph database-profile "C:\Users\admin\Documents\data-control" chfs
    statagraph database-profile "C:\Users\admin\Documents\data-control" csmar
 
-7. 检查索引摘要、三组检索结果、source metadata row、Registry status 和 local path 字段。
-8. 再次检查 data-control 的 git status --short，确认生成的 .statagraph/ 缓存被忽略，没有改动任何受版本控制的 catalog / metadata 文件。
+8. 检查索引摘要、三组检索结果、source metadata row、Registry status 和 local path 字段。
+9. 再次检查 data-control 的 git status --short，确认生成的 .statagraph/ 缓存被忽略，没有改动任何受版本控制的 catalog / metadata 文件。
 
 ## 验收标准
 
