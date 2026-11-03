@@ -171,12 +171,24 @@ def build_database_index(control_root: str | Path) -> dict[str, Any]:
 
         categories = _json_list(_field(dataset_row, ("categories_json", "categories")))
         metadata_file_paths, variables_path = _metadata_paths(root, dataset_row)
+        shared_root_metadata = any(path.parent.name.casefold() == "_root_files" for path in metadata_file_paths)
+        category_names = {_norm(Path(item).name) for item in categories}
         dataset_files: list[dict[str, Any]] = []
         file_lookup: dict[str, dict[str, Any]] = {}
+        basename_lookup: dict[str, list[dict[str, Any]]] = {}
         for metadata_path in metadata_file_paths:
             rel_source = metadata_path.relative_to(root).as_posix()
             metadata_files_read.append(rel_source)
-            for row_number, row in enumerate(_read_csv(metadata_path), start=2):
+            metadata_rows = _read_csv(metadata_path)
+            if shared_root_metadata:
+                # _root_files metadata is shared by several one-file catalog entries.
+                # Scope it to the exact filename recorded in this dataset's category.
+                metadata_rows = [
+                    row for row in metadata_rows
+                    if _norm(Path(_field(row, ("relative_path", "file", "filename", "file_name", "path"))).name)
+                    in category_names
+                ]
+            for row_number, row in enumerate(metadata_rows, start=2):
                 record = _file_record(
                     dataset_id, dataset_name, row, rel_source, row_number, canonical, verified
                 )
@@ -185,7 +197,8 @@ def build_database_index(control_root: str | Path) -> dict[str, Any]:
                 dataset_files.append(record)
                 files.append(record)
                 file_lookup[_norm_path(record["relative_path"]).casefold()] = record
-                file_lookup[Path(record["relative_path"].replace("\\", "/")).name.casefold()] = record
+                basename = Path(record["relative_path"].replace("\\", "/")).name.casefold()
+                basename_lookup.setdefault(basename, []).append(record)
 
         dataset_variables: list[dict[str, Any]] = []
         if variables_path:
@@ -199,6 +212,16 @@ def build_database_index(control_root: str | Path) -> dict[str, Any]:
                 original_type = _field(row, ("original_type", "display_format", "format", "fmt"))
                 if not variable:
                     unparsed_variable_rows += 1
+                    continue
+
+                linked_file = file_lookup.get(_norm_path(relative_path).casefold())
+                if linked_file is None:
+                    basename = Path(relative_path.replace("\\", "/")).name.casefold()
+                    candidates = basename_lookup.get(basename, [])
+                    if len(candidates) == 1:
+                        linked_file = candidates[0]
+                if shared_root_metadata and linked_file is None:
+                    # Never attach shared root-file metadata to the wrong catalog dataset.
                     continue
 
                 # XLSX sheet names are documented as "sheet:<name>" in label;
@@ -216,10 +239,6 @@ def build_database_index(control_root: str | Path) -> dict[str, Any]:
                     })
                     continue
 
-                linked_file = (
-                    file_lookup.get(_norm_path(relative_path).casefold())
-                    or file_lookup.get(Path(relative_path.replace("\\", "/")).name.casefold())
-                )
                 year = _year_hint(relative_path, dataset_id)
                 variable_record = {
                     "variable_id": f"{dataset_id}:{_norm_path(relative_path)}:{variable}",
