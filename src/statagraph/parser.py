@@ -111,6 +111,17 @@ def _strip_prefixes(command: str) -> str:
         text = text[match.end():].lstrip()
 
 
+def _strip_by_prefix(command: str) -> str:
+    """Strip Stata by/bysort prefixes so the underlying command is indexed.
+
+    Examples:
+        bysort hhid: egen x = max(y)
+        by hhid (year): gen first = _n == 1
+    """
+    match = re.match(r"^(?:by|bysort)\b[^:]*:\s*(.+)$", command, flags=re.I)
+    return match.group(1).strip() if match else command
+
+
 def _split_main_options(command: str) -> tuple[str, str]:
     # In Stata, local macros use `name' syntax. The apostrophe therefore must
     # not be treated as a string delimiter. Double quotes are Stata's normal
@@ -131,7 +142,7 @@ def _split_main_options(command: str) -> tuple[str, str]:
 
 
 def _parse_regression(command: str, file: str, line: int, estimate_name: str | None = None) -> dict[str, Any] | None:
-    normalized = _strip_prefixes(command)
+    normalized = _strip_by_prefix(_strip_prefixes(command))
     main, options = _split_main_options(normalized)
     tokens = main.split()
     if not tokens:
@@ -198,7 +209,7 @@ def parse_stata_file(path: Path, root: Path) -> dict[str, Any]:
     }
 
     for line, original in _logical_lines(text):
-        command = _strip_prefixes(original)
+        command = _strip_by_prefix(_strip_prefixes(original))
         lower = command.lower()
 
         # eststo name: <regression>
@@ -218,7 +229,9 @@ def parse_stata_file(path: Path, root: Path) -> dict[str, Any]:
             continue
 
         if first == "use":
-            target = _extract_path_after_keyword(command, "use")
+            # Stata supports both `use "file.dta"` and
+            # `use varlist using "file.dta"`; prefer the explicit using path.
+            target = _extract_using_path(command) or _extract_path_after_keyword(command, "use")
             if target:
                 parsed["data_reads"].append({"line": line, "path": target, "kind": "use", "raw": original})
             continue
