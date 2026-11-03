@@ -18,7 +18,7 @@ _COEF_ROW_RE = re.compile(
 _RC_RE = re.compile(r"^r\((\d+)\);\s*$", re.I)
 _NUMBER_OBS_RE = re.compile(r"Number of obs\s*=\s*([0-9,]+)", re.I)
 _CLUSTER_RE = re.compile(r"Number of clusters\s*\(([^)]+)\)\s*=\s*([0-9,]+)", re.I)
-_R2_RE = re.compile(r"(?<!Within )R-squared\s*=\s*([-+0-9.eE]+)", re.I)
+_R2_RE = re.compile(r"R-squared\s*=\s*([-+0-9.eE]+)", re.I)
 _WITHIN_R2_RE = re.compile(r"Within R-sq\.\s*=\s*([-+0-9.eE]+)", re.I)
 _OPENED_RE = re.compile(r"opened on:\s*(.+)$", re.I)
 _CLOSED_RE = re.compile(r"closed on:\s*(.+)$", re.I)
@@ -129,8 +129,7 @@ def parse_log_file(path: Path, root: Path) -> dict[str, Any]:
         within = _WITHIN_R2_RE.search(line)
         if within:
             stats["within_r2"] = _float(within.group(1))
-        r2 = _R2_RE.search(line)
-        if r2 and "Within R-sq." not in line:
+        elif (r2 := _R2_RE.search(line)):
             stats["r2"] = _float(r2.group(1))
 
         rc = _RC_RE.match(stripped)
@@ -161,19 +160,13 @@ def parse_log_file(path: Path, root: Path) -> dict[str, Any]:
         if current_result is not None:
             coefficient = _COEF_ROW_RE.match(line)
             if coefficient:
-                name = coefficient.group(1).strip()
-                p_value = _float(coefficient.group(4) or coefficient.group(5))
                 current_result["coefficients"].append({
-                    "name": name,
+                    "name": coefficient.group(1).strip(),
                     "b": _float(coefficient.group(2)),
                     "se": _float(coefficient.group(3)),
-                    "stat": _float(coefficient.group(4)) if False else _float(coefficient.group(4)),
-                    "p": p_value,
+                    "stat": _float(coefficient.group(4)),
+                    "p": _float(coefficient.group(5) or coefficient.group(6)),
                 })
-                # group(4) is p in the regex. Recompute the test statistic from b/se below.
-                row = current_result["coefficients"][-1]
-                if row["b"] is not None and row["se"] not in (None, 0):
-                    row["stat"] = row["b"] / row["se"]
                 seen_coefficient = True
                 continue
 
