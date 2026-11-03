@@ -1,6 +1,6 @@
 # AGENTS.md — StataGraph
 
-StataGraph is a research-aware code/data/log/experiment-history lineage tool for Stata projects.
+StataGraph is a research-aware code/data/log/experiment-history tool with a metadata-only database graph for Stata projects.
 
 ## Goal
 
@@ -57,6 +57,28 @@ Temporary branch code may be discarded by the research workflow; retained log/Ma
 Use dependency-free tolerant parsing first. Do not switch the whole project to Tree-sitter merely for architectural purity. Add a Tree-sitter backend only after real-project tests show a concrete accuracy gain.
 
 Existing `tree-sitter-stata` projects may be studied or optionally integrated later, but incomplete macro/options support must not block practical indexing.
+
+## Database graph rule
+
+The database graph is a metadata-only layer over the user's central `gaolingxi/data` control repository.
+
+Allowed inputs:
+- `catalog/datasets.csv` for dataset identity and release metadata
+- `catalog/data_registry.csv` for current local path and verification status
+- `metadata/<dataset>/files.csv` for file inventory
+- sibling `metadata/<dataset>/variables.csv` for variable names, labels, storage types, and original display formats
+
+Hard boundaries:
+1. Read these metadata files only. Do not open raw microdata files, inspect observation-level values, or sample records to build the database index.
+2. Do not recursively scan the local data mirror to guess paths. Resolve data identity from `dataset_id`; the only current local path authority is `catalog/data_registry.csv`.
+3. Expose a local path only when `verification_status=VERIFIED` and `canonical_local_relpath` is present. `BLOCKED`, `REVIEW`, `UNRESOLVED`, missing, and unregistered entries may remain searchable as catalog metadata but are never approved local inputs.
+4. Keep the generated `.statagraph/database_index.json` as a local ignored cache. Do not commit it or write it into the raw data mirror.
+5. Preserve source metadata file and row references for every result.
+6. A year parsed from a file path is only a search hint. Do not treat it as proof of survey wave or cross-wave comparability.
+7. Variable-name/label similarity is not evidence that two variables share the same definition, unit, respondent, or statistical universe. Preserve missing labels as missing; do not invent definitions.
+8. The database indexer must never modify `gaolingxi/data` catalog files, registry rows, metadata, or raw data.
+
+The database graph is separate from a project's research graph. A later MCP layer may query both and link an original database variable to a project variable only when the source evidence supports the match.
 
 ## Research workflow compatibility
 
