@@ -94,10 +94,11 @@ StataGraph must work with the repository workflow defined in `gaolingxi/research
 
 ## Development sequence
 
-- V0.1: parser + code/data index + CLI + tests
+- V0.1: Stata code/data lineage + CLI + tests
 - V0.2: Stata log index/search + result/error recovery
 - V0.2.1: unified log + research Markdown + branch-registry history
-- V0.3: MCP server for OpenCode/Codex/Claude-compatible clients
+- V0.2.2: metadata-only microdata database graph + dataset/file/variable search
+- V0.3: MCP server for OpenCode/Codex/Claude-compatible clients, querying both project and database graphs
 - V0.4: optional Tree-sitter backend and incremental indexing
 
-Prefer small changes driven by failures on actual Stata repositories.
+Prefer small changes driven by failures on actual Stata and microdata repositories.
