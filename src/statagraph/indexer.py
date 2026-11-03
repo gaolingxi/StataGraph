@@ -6,6 +6,7 @@ from collections import defaultdict, deque
 from pathlib import Path
 from typing import Any
 
+from .history_parser import parse_history_markdown, scan_history_markdown
 from .log_parser import LOG_SUFFIXES, parse_log_file
 from .parser import parse_stata_file
 
@@ -44,6 +45,42 @@ def scan_log_files(root: Path) -> list[Path]:
     return _scan_files(root, LOG_SUFFIXES)
 
 
+def _history_tokens(record: dict[str, Any]) -> set[str]:
+    tokens: set[str] = set()
+    for key in ("record_id", "branch_id", "task_id", "run_id"):
+        value = record.get(key)
+        if value:
+            tokens.add(_search_norm(str(value)))
+    for value in record.get("task_ids", []):
+        if value:
+            tokens.add(_search_norm(str(value)))
+    return {token for token in tokens if token}
+
+
+def _link_history_records(records: list[dict[str, Any]]) -> None:
+    token_map: dict[str, list[int]] = defaultdict(list)
+    for i, record in enumerate(records):
+        for token in _history_tokens(record):
+            token_map[token].append(i)
+
+    related: dict[int, set[int]] = defaultdict(set)
+    for indexes in token_map.values():
+        if len(indexes) < 2:
+            continue
+        for i in indexes:
+            related[i].update(j for j in indexes if j != i)
+
+    for i, record in enumerate(records):
+        record["related_records"] = [
+            {
+                "source_type": records[j].get("source_type"),
+                "file": records[j].get("file"),
+                "record_id": records[j].get("record_id"),
+            }
+            for j in sorted(related.get(i, set()))
+        ]
+
+
 def build_index(root: str | Path) -> dict[str, Any]:
     root_path = Path(root).expanduser().resolve()
     if not root_path.exists() or not root_path.is_dir():
@@ -51,6 +88,10 @@ def build_index(root: str | Path) -> dict[str, Any]:
 
     parsed_files = [parse_stata_file(path, root_path) for path in scan_stata_files(root_path)]
     parsed_logs = [parse_log_file(path, root_path) for path in scan_log_files(root_path)]
+    parsed_history_docs = [
+        parse_history_markdown(path, root_path)
+        for path in scan_history_markdown(root_path, SKIP_DIRS)
+    ]
 
     datasets: dict[str, dict[str, Any]] = defaultdict(lambda: {
         "read_by": [],
@@ -139,6 +180,8 @@ def build_index(root: str | Path) -> dict[str, Any]:
     logs: dict[str, dict[str, Any]] = {}
     log_results: list[dict[str, Any]] = []
     log_errors: list[dict[str, Any]] = []
+    history_records: list[dict[str, Any]] = []
+
     for parsed in parsed_logs:
         file = parsed["file"]
         paired = stata_by_stem.get(Path(file).stem, [])
@@ -160,8 +203,48 @@ def build_index(root: str | Path) -> dict[str, Any]:
                 **error,
             })
 
+        markers = parsed.get("markers", {})
+        history_records.append({
+            "source_type": "stata_log",
+            "file": file,
+            "record_id": parsed.get("run_id") or Path(file).stem,
+            "run_id": parsed.get("run_id"),
+            "branch_id": markers.get("BRANCH_ID"),
+            "task_id": markers.get("TASK_ID"),
+            "task_ids": parsed.get("task_ids", []),
+            "title": Path(file).stem,
+            "status": parsed.get("status"),
+            "fields": markers,
+            "paired_stata_files": paired,
+            "result_count": parsed.get("result_count", 0),
+            "error_count": parsed.get("error_count", 0),
+        })
+
+    history_docs: dict[str, dict[str, Any]] = {}
+    for parsed in parsed_history_docs:
+        file = parsed["file"]
+        doc = {key: value for key, value in parsed.items() if key != "registry_rows"}
+        history_docs[file] = doc
+        fields = parsed.get("fields", {})
+        history_records.append({
+            **doc,
+            "branch_id": fields.get("branch_id"),
+            "task_id": fields.get("task_id"),
+            "status": fields.get("status") or fields.get("decision"),
+        })
+        for row in parsed.get("registry_rows", []):
+            row_fields = row.get("fields", {})
+            history_records.append({
+                **row,
+                "branch_id": row_fields.get("branch_id"),
+                "task_id": row_fields.get("task_id"),
+                "status": row_fields.get("status") or row_fields.get("decision"),
+            })
+
+    _link_history_records(history_records)
+
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "root": root_path.as_posix(),
         "files": {item["file"]: item for item in parsed_files},
         "calls": calls,
@@ -174,9 +257,13 @@ def build_index(root: str | Path) -> dict[str, Any]:
         "logs": logs,
         "log_results": log_results,
         "log_errors": log_errors,
+        "history_docs": history_docs,
+        "history_records": history_records,
         "summary": {
             "stata_files": len(parsed_files),
             "log_files": len(parsed_logs),
+            "history_markdown_files": len(parsed_history_docs),
+            "history_records": len(history_records),
             "datasets": len(datasets),
             "variables": len(variables),
             "regressions": len(regressions),
@@ -202,7 +289,7 @@ def load_or_build(root: str | Path, rebuild: bool = False) -> dict[str, Any]:
     target = root_path / ".statagraph" / "index.json"
     if target.exists() and not rebuild:
         index = json.loads(target.read_text(encoding="utf-8"))
-        if index.get("schema_version") == 2:
+        if index.get("schema_version") == 3:
             return index
     index = build_index(root_path)
     save_index(index, root_path)
@@ -332,6 +419,70 @@ def search_logs(index: dict[str, Any], query: str, limit: int = 20, excerpts_per
         })
 
     matches.sort(key=lambda item: (-item["score"], item["file"]))
+    return matches[:limit]
+
+
+def search_history(
+    index: dict[str, Any],
+    query: str | None = None,
+    branch: str | None = None,
+    task: str | None = None,
+    status: str | None = None,
+    limit: int = 30,
+    excerpts_per_file: int = 4,
+) -> list[dict[str, Any]]:
+    query_norm = _search_norm(query) if query else None
+    branch_norm = _search_norm(branch) if branch else None
+    task_norm = _search_norm(task) if task else None
+    status_norm = _search_norm(status) if status else None
+    root = Path(index["root"])
+    matches: list[dict[str, Any]] = []
+
+    for record in index.get("history_records", []):
+        if branch_norm and branch_norm not in _search_norm(str(record.get("branch_id", ""))):
+            continue
+
+        task_values = [record.get("task_id")] + list(record.get("task_ids", []))
+        if task_norm and not any(task_norm in _search_norm(str(value or "")) for value in task_values):
+            continue
+
+        record_status = str(record.get("status") or record.get("fields", {}).get("decision") or "")
+        if status_norm and status_norm not in _search_norm(record_status):
+            continue
+
+        structured = json.dumps({
+            "record_id": record.get("record_id"),
+            "branch_id": record.get("branch_id"),
+            "task_id": record.get("task_id"),
+            "task_ids": record.get("task_ids", []),
+            "title": record.get("title"),
+            "status": record_status,
+            "fields": record.get("fields", {}),
+            "raw_fields": record.get("raw_fields", {}),
+        }, ensure_ascii=False)
+        structured_hit = not query_norm or query_norm in _search_norm(structured)
+
+        excerpts: list[dict[str, Any]] = []
+        if query_norm:
+            path = root / str(record.get("file", ""))
+            if path.exists() and path.suffix.lower() in {".md", ".log", ".smcl"}:
+                for lineno, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1):
+                    if query_norm in _search_norm(line):
+                        excerpts.append({"line": lineno, "text": line.strip()})
+                        if len(excerpts) >= excerpts_per_file:
+                            break
+
+        if query_norm and not structured_hit and not excerpts:
+            continue
+
+        score = (20 if structured_hit and query_norm else 5) + len(excerpts)
+        matches.append({
+            **record,
+            "score": score,
+            "excerpts": excerpts,
+        })
+
+    matches.sort(key=lambda item: (-item["score"], str(item.get("file", "")), str(item.get("record_id", ""))))
     return matches[:limit]
 
 
