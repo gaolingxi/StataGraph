@@ -112,17 +112,15 @@ def _strip_prefixes(command: str) -> str:
 
 
 def _split_main_options(command: str) -> tuple[str, str]:
-    in_quotes = False
-    quote = ""
+    # In Stata, local macros use `name' syntax. The apostrophe therefore must
+    # not be treated as a string delimiter. Double quotes are Stata's normal
+    # string/path delimiter for the cases relevant to option splitting.
+    in_double_quotes = False
     paren_depth = 0
     for i, ch in enumerate(command):
-        if ch in {'"', "'"}:
-            if not in_quotes:
-                in_quotes = True
-                quote = ch
-            elif quote == ch:
-                in_quotes = False
-        elif not in_quotes:
+        if ch == '"':
+            in_double_quotes = not in_double_quotes
+        elif not in_double_quotes:
             if ch == "(":
                 paren_depth += 1
             elif ch == ")" and paren_depth:
